@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -265,13 +266,55 @@ func scrapeFeeds(s *state) error {
 		return fmt.Errorf("error getting feed: %w", err)
 	}
 
-	fmt.Println("---------------------")
-	fmt.Println("---------------------")
 	for _, item := range feeditems.Channel.Item {
-		fmt.Println(item.Title)
+		_, err = s.db.CreatePost(context.Background(), database.CreatePostParams{
+			ID:          uuid.New(),
+			CreatedAt:   time.Now().UTC(),
+			UpdatedAt:   time.Now().UTC(),
+			Title:       item.Title,
+			Url:         item.Link,
+			Description: item.Description,
+			PublishedAt: sql.NullString{
+				String: item.PubDate,
+				Valid:  item.PubDate != "",
+			},
+			FeedID: feed.ID,
+		})
+		if err != nil {
+			return err
+		}
 	}
-	fmt.Println("---------------------")
-	fmt.Println("---------------------")
 
 	return nil
+}
+
+func handlerBrowse(s *state, cmd command, user database.User) error {
+	var limit int32
+	if len(cmd.Args) != 1 {
+		limit = 2
+	} else {
+		parsed, err := strconv.ParseInt(cmd.Args[0], 10, 32)
+		if err != nil {
+			return fmt.Errorf("error usage: %s <int>", cmd.Name)
+		}
+		limit = int32(parsed)
+	}
+
+	posts, err := s.db.GetPostsForUser(context.Background(), database.GetPostsForUserParams{
+		UserID: user.ID,
+		Limit:  limit,
+	})
+	if err != nil {
+		return fmt.Errorf("error returning posts: %w", err)
+	}
+
+	for _, post := range posts {
+		fmt.Println("---------------------")
+		fmt.Printf("* TITLE: %s\n", post.Title)
+		fmt.Printf("* DESCRIPTION: %s\n", post.Description)
+		fmt.Println("---------------------")
+	}
+
+	return nil
+
 }
