@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"time"
 
@@ -74,12 +75,19 @@ func handlerUsers(s *state, cmd command) error {
 }
 
 func handlerAgg(s *state, cmd command) error {
-	feed, err := rss.FetchFeed(context.Background(), "https://www.wagslane.dev/index.xml")
-	if err != nil {
-		return fmt.Errorf("couldn't fetch feed: %w", err)
+	if len(cmd.Args) != 1 {
+		return fmt.Errorf("usage: %v <name> <time>", cmd.Name)
 	}
 
-	fmt.Println(feed)
+	timeBetweenRequests, err := time.ParseDuration(cmd.Args[0])
+	if err != nil {
+		return fmt.Errorf("error parsing you time: %w", err)
+	}
+
+	ticker := time.NewTicker(timeBetweenRequests)
+	for ; ; <-ticker.C {
+		scrapeFeeds(s)
+	}
 
 	return nil
 }
@@ -230,6 +238,40 @@ func handlerUnfollow(s *state, cmd command, user database.User) error {
 	if err != nil {
 		return fmt.Errorf("error deleteing feed follow: %w", err)
 	}
+
+	return nil
+}
+
+func scrapeFeeds(s *state) error {
+	feed, err := s.db.GetNextFeedToFetch(context.Background())
+	if err != nil {
+		return fmt.Errorf("error getting the next feed to fetch: %w", err)
+	}
+
+	err = s.db.MarkFeedFetched(context.Background(), database.MarkFeedFetchedParams{
+		ID: feed.ID,
+		LastFetchedAt: sql.NullTime{
+			Time:  time.Now().UTC(),
+			Valid: true,
+		},
+		UpdatedAt: time.Now().UTC(),
+	})
+	if err != nil {
+		return fmt.Errorf("error marking feed as fetched: %w", err)
+	}
+
+	feeditems, err := rss.FetchFeed(context.Background(), feed.Url)
+	if err != nil {
+		return fmt.Errorf("error getting feed: %w", err)
+	}
+
+	fmt.Println("---------------------")
+	fmt.Println("---------------------")
+	for _, item := range feeditems.Channel.Item {
+		fmt.Println(item.Title)
+	}
+	fmt.Println("---------------------")
+	fmt.Println("---------------------")
 
 	return nil
 }
