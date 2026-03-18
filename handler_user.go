@@ -84,17 +84,13 @@ func handlerAgg(s *state, cmd command) error {
 	return nil
 }
 
-func handlerAddFeed(s *state, cmd command) error {
+func handlerAddFeed(s *state, cmd command, user database.User) error {
 	if len(cmd.Args) != 2 {
 		return fmt.Errorf("usage: %v <name> <url>", cmd.Name)
 	}
 
 	name := cmd.Args[0]
 	url := cmd.Args[1]
-	user, err := s.db.GetUser(context.Background(), s.cfg.CurrentUserName)
-	if err != nil {
-		return fmt.Errorf("error with user id")
-	}
 
 	feed, err := s.db.CreateFeed(context.Background(), database.CreateFeedParams{
 		ID:        uuid.New(),
@@ -168,7 +164,7 @@ func printFeedRow(feed database.GetFeedsRow) {
 	fmt.Printf("* User:          %s\n\n", feed.UserName)
 }
 
-func handlerFollow(s *state, cmd command) error {
+func handlerFollow(s *state, cmd command, user database.User) error {
 	if len(cmd.Args) != 1 {
 		return fmt.Errorf("usage: %v <url>", cmd.Name)
 	}
@@ -178,11 +174,6 @@ func handlerFollow(s *state, cmd command) error {
 	feeds, err := s.db.GetFeed(context.Background(), url)
 	if err != nil {
 		return fmt.Errorf("error getting feed: %w", err)
-	}
-
-	user, err := s.db.GetUser(context.Background(), s.cfg.CurrentUserName)
-	if err != nil {
-		return fmt.Errorf("error getting user: %w", err)
 	}
 
 	feedFollowRow, err := s.db.CreateFeedFollow(context.Background(), database.CreateFeedFollowParams{
@@ -204,16 +195,8 @@ func handlerFollow(s *state, cmd command) error {
 	return nil
 }
 
-func handlerFollowing(s *state, cmd command) error {
-	user := s.cfg.CurrentUserName
-	userRow, err := s.db.GetUser(context.Background(), user)
-	if err != nil {
-		return fmt.Errorf("error getting user row: %w", err)
-	}
-
-	userid := userRow.ID
-
-	followedFeedRows, err := s.db.GetFeedFollowsForUser(context.Background(), userid)
+func handlerFollowing(s *state, cmd command, user database.User) error {
+	followedFeedRows, err := s.db.GetFeedFollowsForUser(context.Background(), user.ID)
 	if err != nil {
 		return fmt.Errorf("error getting user followed feed rows: %w", err)
 	}
@@ -223,7 +206,30 @@ func handlerFollowing(s *state, cmd command) error {
 	for _, row := range followedFeedRows {
 		fmt.Println("*	" + row.FeedName)
 	}
-	fmt.Println("\n" + user)
+	fmt.Println("\n" + user.Name)
+
+	return nil
+}
+
+func handlerUnfollow(s *state, cmd command, user database.User) error {
+	if len(cmd.Args) != 1 {
+		return fmt.Errorf("usage: %v <url>", cmd.Name)
+	}
+
+	url := cmd.Args[0]
+
+	feed, err := s.db.GetFeed(context.Background(), url)
+	if err != nil {
+		return fmt.Errorf("error getting feed: %w", err)
+	}
+
+	err = s.db.DeleteFeedFollow(context.Background(), database.DeleteFeedFollowParams{
+		UserID: user.ID,
+		FeedID: feed.ID,
+	})
+	if err != nil {
+		return fmt.Errorf("error deleteing feed follow: %w", err)
+	}
 
 	return nil
 }
