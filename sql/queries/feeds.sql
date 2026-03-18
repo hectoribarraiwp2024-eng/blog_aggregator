@@ -1,0 +1,39 @@
+-- name: CreateFeed :one
+INSERT INTO feeds (id, created_at, updated_at, name, url, user_id)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING *;
+
+-- name: GetFeeds :many
+SELECT 
+    feeds.name,
+    feeds.url,
+    users.name AS user_name
+FROM feeds
+JOIN users ON feeds.user_id = users.id;
+
+-- name: CreateFeedFollow :one
+WITH inserted_follow AS (
+    INSERT INTO feed_follows (id, created_at, updated_at, user_id, feed_id)
+    VALUES ($1, $2, $3, $4, $5)
+    RETURNING *
+)
+SELECT 
+    inserted_follow.*,
+    users.name AS user_name,
+    feeds.name AS feed_name
+FROM inserted_follow
+JOIN users ON inserted_follow.user_id = users.id
+JOIN feeds ON inserted_follow.feed_id = feeds.id;
+
+-- name: GetFeed :one
+SELECT * FROM feeds
+WHERE url = $1;
+
+-- name: GetFeedFollowsForUser :many
+SELECT 
+    feed_follows.*,
+    feeds.name AS feed_name,
+    feeds.url AS feed_url
+FROM feed_follows
+JOIN feeds ON feed_follows.feed_id = feeds.id
+WHERE feed_follows.user_id = $1;
